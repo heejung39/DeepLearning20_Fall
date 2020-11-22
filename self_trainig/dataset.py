@@ -7,9 +7,13 @@ import torchvision
 import cv2
 from torch.utils import data
 
+#stare; target, chasedb1; source
+#tgt label을 넣어주면 해당 라벨을 가지고 학습 진행하도록
+
 class chase_stare(data.Dataset):
-    def __init__(self, root, crop_size=(500,500), train= True, datatype= None, transforms= None):
+    def __init__(self, root, crop_size=(600,600), train= True, datatype= None, source_target= 'source', tgt_label= None, transforms= None):
         self.root = root
+        self.tgt_label = tgt_label
         self.crop_size = crop_size
         self.train = train
         self.datatype = datatype
@@ -18,33 +22,44 @@ class chase_stare(data.Dataset):
         self.files = []
         self.img_ids = []
         self.label_ids =[]
-        if train:
-            self.img_list[:15] # total 28(chasedb1), 20(stare)
-        else:
-            self.img_list[15:]
+        self.source_target= source_target
+        if source_target == 'source':
+            if train:
+                self.img_list[:20] # total 28(chasedb1), 20(stare)
+            else:
+                self.img_list[20:]
+
         for name in self.img_list:
             img_file = os.path.join(self.root, 'images/',name)
-            if self.datatype == chasedb1:
+            if self.datatype == 'chasedb1':
                 label_file = os.path.join(self.root, 'labels/',name[:-4] + "_1stHO.png")
             else:
-                label_file = os.path.join(self.root, 'labels/', name[:-3] +"vk.ppm")
+                if tgt_label == None: #ori label
+                    label_file = os.path.join(self.root, 'labels/', name[:-3] +"vk.ppm")
+                else: #ST label
+                    label_file = os.path.join(tgt_label, name[:-3] + 'jpg')
 
-        self.files.append({
-            "img": img_file,
-            "label": label_file
-            "name": name
-        })
+            self.files.append({
+                "img": img_file,
+                "label": label_file,
+                "name": name
+            })
     def __len__(self):
         return len(self.files)
+
     def __getitem__(self, idx):
         datafiles = self.files[idx]
         img = cv2.imread(datafiles["img"])
         label = cv2.imread(datafiles["label"], cv2.IMREAD_GRAYSCALE)
         name = datafiles["name"]
-        w,h,_ = img.shape
+        h,w,_ = img.shape
         if (w,h) != self.crop_size:
-            img = cv2.resize(img, self.crop_size, interpolations= cv2.INTER_AREA)
+            img = cv2.resize(img, self.crop_size, interpolation= cv2.INTER_AREA)
             label = cv2.resize(label, self.crop_size, interpolation= cv2.INTER_AREA)
+            # cv2.imshow('img', img)
+            # cv2.imshow('label', label)
+            # cv2.waitKey()
+
             datafiles= {
                 "img": img,
                 "label": label,
@@ -52,8 +67,7 @@ class chase_stare(data.Dataset):
             }
 
         if self.transforms:
-            X = self.transforms(datafiles)
-
+            datafiles = self.transforms(datafiles)
         return datafiles
 
 class normalize(object):
@@ -95,7 +109,7 @@ class rotation(object):
         X = datafiles["img"]
         Y = datafiles["label"]
         name = datafiles["name"]
-        width, height = X.shape
+        height, width, channel = X.shape
         rm = np.random.rand()
         if rm > 0.8:
             M = cv2.getRotationMatrix2D((height / 2, width / 2), 90, 1)
